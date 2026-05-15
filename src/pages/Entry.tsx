@@ -45,6 +45,7 @@ export default function Entry() {
   }
 
   return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
     <div className="entry-card">
       <img className="logo" src={logo} alt="logo" />
       <h2>PWP</h2>
@@ -64,6 +65,7 @@ export default function Entry() {
         </div>
         {error ? <p style={{ color: 'red', marginTop: 12 }}>{error}</p> : null}
       </form>
+    </div>
     </div>
   )
 }
