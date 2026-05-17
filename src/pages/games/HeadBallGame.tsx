@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { io } from 'socket.io-client'
 import type { GameProps } from '../Game'
+import LeaveConfirmDialog from '../../components/LeaveConfirmDialog'
+import ForfeitWinDialog from '../../components/ForfeitWinDialog'
 
 const WIN_SCORE = 3
 
@@ -13,6 +15,8 @@ export default function HeadBallGame({ player, opponent, room, side }: GameProps
   const socketRef = useRef<ReturnType<typeof io> | null>(null)
   const [score, setScore] = useState({ left: 0, right: 0 })
   const [winner, setWinner] = useState<string | null>(null)
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
+  const [forfeitWin, setForfeitWin] = useState(false)
 
   useEffect(() => {
     const socket = io('http://localhost:4000', { withCredentials: true })
@@ -25,6 +29,9 @@ export default function HeadBallGame({ player, opponent, room, side }: GameProps
     })
     socket.on('hb_gameover', ({ winner: w }: { winner: string }) => {
       setWinner(w)
+    })
+    socket.on('opponent_forfeited', ({ winner: w }: { winner: string }) => {
+      if (w === player) setForfeitWin(true)
     })
     return () => { socket.disconnect(); socketRef.current = null }
   }, [player, room])
@@ -96,7 +103,25 @@ export default function HeadBallGame({ player, opponent, room, side }: GameProps
           <button onClick={() => addGoal('right')} style={goalBtn('#7f1d1d')}>+1 Opp Goal</button>
         </div>
       )}
-      {!winner && <button onClick={() => navigate(-1)} style={backBtn}>Leave</button>}
+      {!winner && (
+        <button onClick={() => setShowLeaveConfirm(true)} style={backBtn}>Leave</button>
+      )}
+
+      {forfeitWin && (
+        <ForfeitWinDialog
+          onProceed={() => navigate(tournamentId ? `/tournment/${tournamentId}` : -1 as any)}
+        />
+      )}
+
+      {showLeaveConfirm && (
+        <LeaveConfirmDialog
+          onCancel={() => setShowLeaveConfirm(false)}
+          onConfirm={() => {
+            socketRef.current?.emit('player_left', { tournamentId, matchId, opponentName: opponent })
+            navigate(tournamentId ? `/tournment/${tournamentId}` : -1 as any)
+          }}
+        />
+      )}
     </div>
   )
 }

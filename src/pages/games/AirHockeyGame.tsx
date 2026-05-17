@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { io } from 'socket.io-client'
 import type { GameProps } from '../Game'
+import LeaveConfirmDialog from '../../components/LeaveConfirmDialog'
+import ForfeitWinDialog from '../../components/ForfeitWinDialog'
 
 const W = 700
 const H = 420
@@ -9,7 +11,7 @@ const PUCK_R = 14
 const PADDLE_R = 32
 const GOAL_H = 140
 const WALL_T = 8
-const WIN_SCORE = 7
+const WIN_SCORE = 3
 const MAX_SPEED = 13
 const FRICTION = 0.997
 const TICK_MS = 16   // ~60hz logic tick — runs even when window is backgrounded
@@ -44,6 +46,7 @@ export default function AirHockeyGame({ player, opponent, room, side }: GameProp
   const [, tournamentId, matchId] = room.match(/^t(\d+)_m(\d+)$/) || []
 
   const canvasRef  = useRef<HTMLCanvasElement>(null)
+  const socketRef  = useRef<ReturnType<typeof io> | null>(null)
   const activeRef  = useRef(false)
   const pointerRef = useRef({ x: isHost ? PADDLE_R + 40 : W - PADDLE_R - 40, y: H / 2 })
 
@@ -58,6 +61,8 @@ export default function AirHockeyGame({ player, opponent, room, side }: GameProp
 
   const [scoreDisplay, setScoreDisplay] = useState({ left: 0, right: 0 })
   const [winner, setWinner]             = useState<string | null>(null)
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
+  const [forfeitWin, setForfeitWin]     = useState(false)
 
   // ─── draw ─────────────────────────────────────────────────────────────────
   const drawRef = useRef<(() => void) | null>(null)
@@ -155,6 +160,7 @@ export default function AirHockeyGame({ player, opponent, room, side }: GameProp
   // ─── socket + logic tick ──────────────────────────────────────────────────
   useEffect(() => {
     const socket = io('http://localhost:4000', { withCredentials: true })
+    socketRef.current = socket
     const g      = gs.current
     const goalTop = (H - GOAL_H) / 2
     const goalBot = (H + GOAL_H) / 2
@@ -199,6 +205,9 @@ export default function AirHockeyGame({ player, opponent, room, side }: GameProp
     socket.on('ah_gameover', ({ winner: w }: { winner: string }) => {
       g.over = true
       setWinner(w)
+    })
+    socket.on('opponent_forfeited', ({ winner: w }: { winner: string }) => {
+      if (w === player) { g.over = true; setForfeitWin(true) }
     })
 
     // ── logic helpers ──────────────────────────────────────────────────────
@@ -287,6 +296,7 @@ export default function AirHockeyGame({ player, opponent, room, side }: GameProp
     return () => {
       clearInterval(tick)
       socket.disconnect()
+      socketRef.current = null
     }
   }, [isHost, player, opponent, room])
 
@@ -352,7 +362,25 @@ export default function AirHockeyGame({ player, opponent, room, side }: GameProp
       <div style={{ fontSize: 10, color: '#1e3a5f', textTransform: 'uppercase', letterSpacing: 2, fontWeight: 700 }}>
         Hold &amp; drag · your paddle is {isHost ? 'blue (left)' : 'red (right)'}
       </div>
-      {!winner && <button onClick={() => navigate(-1)} style={backBtn}>Leave</button>}
+      {!winner && (
+        <button onClick={() => setShowLeaveConfirm(true)} style={backBtn}>Leave</button>
+      )}
+
+      {forfeitWin && (
+        <ForfeitWinDialog
+          onProceed={() => navigate(tournamentId ? `/tournment/${tournamentId}` : -1 as any)}
+        />
+      )}
+
+      {showLeaveConfirm && (
+        <LeaveConfirmDialog
+          onCancel={() => setShowLeaveConfirm(false)}
+          onConfirm={() => {
+            socketRef.current?.emit('player_left', { tournamentId, matchId, opponentName: opponent })
+            navigate(tournamentId ? `/tournment/${tournamentId}` : -1 as any)
+          }}
+        />
+      )}
     </div>
   )
 }

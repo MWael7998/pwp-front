@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { io } from 'socket.io-client'
 import type { GameProps } from '../Game'
+import LeaveConfirmDialog from '../../components/LeaveConfirmDialog'
+import ForfeitWinDialog from '../../components/ForfeitWinDialog'
 
 const START_PRICE = 1000
 const TICK_MS = 1000
@@ -20,6 +22,8 @@ export default function DutchAuctionGame({ player, opponent, room, side }: GameP
   const [running, setRunning] = useState(false)
   const [myBid, setMyBid]     = useState<number | null>(null)
   const [winner, setWinner]   = useState<string | null>(null)
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
+  const [forfeitWin, setForfeitWin] = useState(false)
 
   useEffect(() => {
     const socket = io('http://localhost:4000', { withCredentials: true })
@@ -36,6 +40,9 @@ export default function DutchAuctionGame({ player, opponent, room, side }: GameP
 
     socket.on('da_gameover', ({ winner: w }: { winner: string }) => {
       setWinner(w)
+    })
+    socket.on('opponent_forfeited', ({ winner: w }: { winner: string }) => {
+      if (w === player) setForfeitWin(true)
     })
 
     return () => { socket.disconnect(); socketRef.current = null }
@@ -129,10 +136,25 @@ export default function DutchAuctionGame({ player, opponent, room, side }: GameP
                 Bid Now — {price} pts
               </button>
             )}
-            <button onClick={() => navigate(-1)} style={backBtn}>Leave</button>
+            <button onClick={() => setShowLeaveConfirm(true)} style={backBtn}>Leave</button>
           </div>
         )}
       </div>
+      {forfeitWin && (
+        <ForfeitWinDialog
+          onProceed={() => navigate(tournamentId ? `/tournment/${tournamentId}` : -1 as any)}
+        />
+      )}
+
+      {showLeaveConfirm && (
+        <LeaveConfirmDialog
+          onCancel={() => setShowLeaveConfirm(false)}
+          onConfirm={() => {
+            socketRef.current?.emit('player_left', { tournamentId, matchId, opponentName: opponent })
+            navigate(tournamentId ? `/tournment/${tournamentId}` : -1 as any)
+          }}
+        />
+      )}
     </div>
   )
 }
